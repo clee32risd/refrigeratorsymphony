@@ -1,1 +1,379 @@
 
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Refrigerator Symphony</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bitcount+Single&family=DM+Sans:opsz,wght@9..40,400;9..40,500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#fff8e2; --brown:#6b2d0d; --ring:#e2e2e2; --btn:#ffdb98; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); overflow:hidden; }
+  body { font-family:'DM Sans', system-ui, sans-serif; font-variation-settings:"opsz" 14; color:#000; }
+  #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  #stage { position:relative; width:1728px; height:1117px; flex:none; transform-origin:center center; }
+  .abs { position:absolute; margin:0; }
+  .tiny { font-size:12px; color:var(--brown); }
+  svg text { font-family:'DM Sans', system-ui, sans-serif; }
+
+  /* day pills */
+  .pill { position:absolute; height:72px; border:none; border-radius:22px; cursor:pointer; padding:0;
+          font:400 32px/1 'DM Sans', system-ui, sans-serif; color:#fff; text-align:left;
+          transition:transform .25s ease, opacity .3s ease, filter .2s; }
+  .pill span.t { position:absolute; top:12px; line-height:normal; white-space:nowrap; }
+  .pill:hover { transform:translateX(-10px); }
+  .pill:focus-visible, .btn:focus-visible, #play:focus-visible { outline:3px solid var(--brown); outline-offset:3px; }
+  .pill .g { color:#8e8e93; }
+  .pill.nodata::after { content:"no data"; white-space:nowrap; position:absolute; right:calc(100% + 12px); top:26px; font-size:13px; color:var(--brown); opacity:.7; }
+
+  /* legend */
+  .legend-item { position:absolute; top:1062px; font-size:20px; cursor:default; transition:opacity .2s; }
+  .legend-dot { position:absolute; top:1066px; width:20px; height:20px; border-radius:50%; transition:opacity .2s; }
+
+  /* views */
+  .view { transition:opacity .35s ease; }
+  .hidden { opacity:0; pointer-events:none; }
+
+  .btn { position:absolute; height:49px; background:var(--btn); border:none; border-radius:7px; font:400 20px 'DM Sans', system-ui, sans-serif; color:#000; cursor:pointer; }
+  .btn:hover { filter:brightness(.96); }
+  .btn:disabled { opacity:.4; cursor:default; }
+
+  #card { position:absolute; left:1204px; top:378px; width:425px; height:243px; background:#e2e2e2; }
+  #play { position:absolute; left:14px; top:10px; width:44px; height:44px; border:none; background:transparent; cursor:pointer; padding:0; }
+  #play:disabled { opacity:.35; cursor:default; }
+  #track { position:absolute; left:50px; top:78px; width:338px; height:1px; background:#000; }
+  .tdot { position:absolute; top:-6.5px; width:13px; height:13px; border-radius:50%; margin-left:-6.5px; transition:transform .15s; }
+  .tdot.on { transform:scale(1.9); }
+  #head { position:absolute; top:-18px; width:1.5px; height:36px; background:var(--brown); margin-left:-.75px; opacity:0; }
+  #now { position:absolute; left:34px; right:20px; top:150px; font-size:15px; color:var(--brown); }
+  #now b { font-weight:500; color:#000; }
+
+  .mark { transition:stroke-width .15s, opacity .3s; cursor:pointer; }
+  .mark.on { stroke-width:44; }
+  .mark.dim { opacity:.15; }
+  .mark.muted { opacity:.08; }
+  #tip { position:absolute; pointer-events:none; background:#fff; border:1px solid var(--brown); border-radius:6px; padding:6px 10px; font-size:14px; color:var(--brown); white-space:nowrap; opacity:0; transition:opacity .12s; z-index:5; }
+  .pop { animation:pop .45s cubic-bezier(.2,1.6,.4,1) both; }
+  @keyframes pop { from { opacity:0; stroke-width:0; } to { opacity:1; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="stage">
+
+  <svg id="clock" class="abs" style="left:0;top:0" width="1100" height="1117" viewBox="0 0 1100 1117" role="img" aria-label="Seven rings, one per weekday, Monday outermost and Sunday innermost. Each colored block is one time the fridge was opened, placed on a 24-hour clock with midnight at the top.">
+    <defs>
+      <filter id="grain" filterUnits="userSpaceOnUse" x="0" y="0" width="1100" height="1117">
+        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 .55  0 0 0 0 .55  0 0 0 0 .55  0 0 0 1.4 -.25" result="nn"/>
+        <feComposite in="nn" in2="SourceGraphic" operator="in" result="nc"/>
+        <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="nc"/></feMerge>
+      </filter>
+    </defs>
+    <g id="grainLayer" class="view hidden"></g>
+    <g id="rings"></g>
+    <g id="marks"></g>
+    <g id="labels"></g>
+    <text id="centerNum" x="544.5" y="540" text-anchor="middle" font-size="36" fill="#6b2d0d">0</text>
+    <text id="centerSub" x="544.5" y="560" text-anchor="middle" font-size="12" fill="#6b2d0d">openings</text>
+    <g id="ticks"></g>
+  </svg>
+
+
+  <!-- week view -->
+  <div id="weekView" class="view">
+    <h1 class="abs" style="left:1640px;top:528px;transform:translate(-50%,-50%) rotate(-90deg);white-space:nowrap;font:400 64px/1 'Bitcount Single', 'DM Sans', monospace;color:var(--brown)">Refrigerator Symphony</h1>
+  </div>
+
+  <!-- day view -->
+  <div id="dayView" class="view hidden">
+    <div id="dayPillSlot"></div>
+    <p id="dayTitle" class="abs" style="right:99px;top:275px;font-size:36px;line-height:normal;text-align:right"></p>
+    <p id="daySub" class="abs" style="right:99px;top:330px;font-size:16px;color:var(--brown);line-height:normal;text-align:right"></p>
+    <div id="card">
+      <button id="play" type="button" aria-label="Play this day's music">
+        <svg id="playIcon" width="32" height="30" viewBox="0 0 32 30" aria-hidden="true"><path d="M2 0 L30 15 L2 30 Z" fill="#dc179f"/></svg>
+      </button>
+      <div id="track"><div id="head"></div></div>
+      <span class="abs tiny" style="left:34px;top:104px">12 am</span>
+      <span class="abs tiny" style="left:370px;top:104px">12 am</span>
+      <p id="now"></p>
+    </div>
+    <button id="backBtn" class="btn" type="button" style="left:1332px;top:676px;width:123px">back</button>
+    <button id="nextBtn" class="btn" type="button" style="left:1482px;top:676px;width:123px;border-radius:9px">next</button>
+    <button id="weekBtn" class="btn" type="button" style="left:1399px;top:1013px;width:206px">back to week</button>
+  </div>
+
+  <p class="abs" style="left:20px;top:1063px;font-size:20px;color:var(--brown);text-shadow:0 4px 4px rgba(0,0,0,.25);line-height:normal">why did i opened the fridge?</p>
+  <div id="legend"></div>
+  <div id="tip"></div>
+</div>
+</div>
+
+<script>
+// Mon–Fri: copied from the Refrigerator Symphony recording on chaewonlee.works (Day 1–5).
+// Sat–Sun: made-up example data — replace with your real log.
+// Each entry: [hour of day (0–24, half-hour steps), reason]
+const WEEK = [[[0.0, "dessert"], [2.0, "drinks"], [7.0, "check"], [9.0, "fruits"], [9.5, "check"], [10.5, "ingredients"], [11.5, "drinks"], [16.5, "fruits"], [17.0, "ingredients"], [17.5, "sauces"], [18.0, "dessert"], [19.5, "check"], [21.5, "drinks"]], [[1.0, "dessert"], [7.5, "drinks"], [8.0, "drinks"], [9.5, "fruits"], [10.5, "check"], [11.5, "drinks"], [12.0, "ingredients"], [12.0, "sauces"], [12.5, "check"], [14.5, "check"], [15.5, "fruits"], [16.5, "ingredients"], [17.5, "drinks"], [18.5, "check"], [21.5, "check"], [22.5, "drinks"]], [[8.0, "check"], [8.0, "drinks"], [9.5, "fruits"], [10.5, "check"], [15.5, "drinks"], [16.5, "ingredients"], [17.5, "fruits"], [18.5, "dessert"], [19.0, "check"], [21.5, "check"], [22.5, "drinks"]], [[1.0, "check"], [2.0, "dessert"], [8.0, "check"], [9.5, "ingredients"], [10.5, "sauces"], [11.5, "check"], [12.0, "drinks"], [12.5, "dessert"], [17.5, "fruits"], [18.5, "dessert"], [18.5, "ingredients"], [19.5, "sauces"], [21.5, "check"], [23.5, "drinks"]], [[1.0, "drinks"], [2.0, "check"], [8.0, "fruits"], [9.5, "check"], [10.5, "sauces"], [12.0, "fruits"], [12.0, "ingredients"], [15.5, "check"], [17.5, "fruits"], [18.5, "check"], [19.5, "dessert"], [20.5, "drinks"], [21.5, "check"], [22.5, "sauces"]], [[0.5, "dessert"], [1.5, "drinks"], [10.0, "check"], [10.5, "drinks"], [11.5, "ingredients"], [12.0, "sauces"], [14.5, "check"], [15.5, "dessert"], [17.0, "fruits"], [19.0, "ingredients"], [19.0, "sauces"], [20.5, "check"], [22.0, "dessert"], [23.5, "drinks"]], [[1.0, "check"], [11.0, "drinks"], [11.5, "fruits"], [13.0, "ingredients"], [13.5, "check"], [15.0, "dessert"], [16.5, "check"], [18.0, "ingredients"], [18.0, "sauces"], [19.5, "fruits"], [21.0, "check"], [22.5, "drinks"]]];
+
+const CATS = {
+  check:       { label:'just checking', color:'#dcf528', x:313, tx:342, pitch:784 },
+  sauces:      { label:'sauces',        color:'#ea0404', x:484, tx:520, pitch:523.25 },
+  ingredients: { label:'ingredients',   color:'#55013d', x:609, tx:640, pitch:587.33 },
+  dessert:     { label:'dessert',       color:'#fdaef3', x:768, tx:809, pitch:1046.5 },
+  drinks:      { label:'drinks',        color:'#0134d0', x:899, tx:938, pitch:880 },
+  fruits:      { label:'fruits',        color:'#ff7b0a', x:1014,tx:1054,pitch:659.25 },
+};
+const DAYS = [
+  { short:'Mon',  name:'Monday',    pill:'1',          color:'#19882b', w:155, top:134, tx:36,  r:467.5, ly:25 },
+  { short:'Tue',  name:'Tuesday',   pill:'Tuesday',    color:'#f56352', w:218, top:253, tx:49,  r:402.5, ly:87 },
+  { short:'Wed',  name:'Wednesday', pill:'three',      color:'#b8998a', w:332, top:374, tx:223, r:346.5, ly:148 },
+  { short:'Thur', name:'Thursday',  pill:'목요일',      color:'#f9e575', w:244, top:493, tx:125, r:283.5, ly:207 },
+  { short:'Fri',  name:'Friday',    pill:'fir<span class="g">e</span> day', color:'#dc179f', w:299, top:622, tx:160, r:216.5, ly:269 },
+  { short:'Sat',  name:'Saturday',  pill:'weekend 1',  color:'#d9d9d9', w:218, top:741, tx:36,  r:147.5, ly:345 },
+  { short:'Sun',  name:'Sunday',    pill:'sunny day',  color:'#81def6', w:430, top:852, tx:248, r:84.5,  ly:406 },
+];
+const CX = 544.5, CY = 532, RW = 30, PILL_RIGHT = 1550;
+const ns = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const ops = d => WEEK[d] || [];
+const total = WEEK.reduce((s, d) => s + d.length, 0);
+
+function fmt(h) {
+  const hh = Math.floor(h) % 24, mm = Math.round((h - Math.floor(h)) * 60);
+  const ap = hh < 12 ? 'AM' : 'PM';
+  return `${(hh % 12) || 12}:${String(mm).padStart(2, '0')} ${ap}`;
+}
+function pt(r, deg) { const a = deg * Math.PI / 180; return [CX + r * Math.sin(a), CY - r * Math.cos(a)]; }
+function arc(r, deg, spanPx) {
+  const span = spanPx / r * 180 / Math.PI;
+  const [x1, y1] = pt(r, deg - span / 2), [x2, y2] = pt(r, deg + span / 2);
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+}
+
+/* ---------- scale stage to window ---------- */
+function fit() { const s = Math.min(innerWidth / 1728, innerHeight / 1117); $('stage').style.transform = `scale(${s})`; }
+addEventListener('resize', fit); fit();
+
+/* ---------- rings ---------- */
+const ringsG = $('rings'), grainG = $('grainLayer');
+el('circle', { cx: CX, cy: CY, r: 482.5, fill: '#e8dcbd', filter: 'url(#grain)' }, grainG);
+const ringEls = DAYS.map(d => el('circle', { cx: CX, cy: CY, r: d.r, fill: 'none', stroke: '#e2e2e2', 'stroke-width': RW }, ringsG));
+const haloEl = el('circle', { cx: CX, cy: CY, r: 0, fill: 'none', stroke: '#fff8e2', 'stroke-width': RW + 36, opacity: 0 }, ringsG);
+ringsG.insertBefore(haloEl, ringsG.firstChild);
+const labelsG = $('labels');
+DAYS.forEach(d => { const t = el('text', { x: CX, y: d.ly + 15, 'font-size': 12, fill: '#6b2d0d', 'text-anchor': 'middle' }, labelsG); t.textContent = d.short; });
+
+/* ---------- clock ticks + time labels around the outside ---------- */
+const ticksG = $('ticks');
+for (let h = 0; h < 24; h++) {
+  const major = h % 3 === 0, deg = h * 15;
+  const [x1, y1] = h === 0 ? pt(503, 0) : pt(492, deg), [x2, y2] = h === 0 ? pt(515, 0) : pt(major ? 506 : 499, deg);
+  el('line', { x1, y1, x2, y2, stroke: '#6b2d0d', 'stroke-width': major ? 1.4 : 1 }, ticksG);
+  if (!major) continue;
+  const lab = ['12 am','3 am','6 am','9 am','12 pm','3 pm','6 pm','9 pm'][h / 3];
+  let x, y, anchor;
+  if (h === 0) { x = CX + 8; y = 26; anchor = 'start'; }
+  else {
+    [x, y] = pt(516, deg); y += 4;
+    anchor = h === 12 ? 'middle' : (h < 12 ? 'start' : 'end');
+    if (h === 12) y += 6;
+  }
+  const t = el('text', { x, y, 'font-size': 12, fill: '#6b2d0d', 'text-anchor': anchor }, ticksG); t.textContent = lab;
+}
+
+/* ---------- marks: fill the circles from the data ---------- */
+const marksG = $('marks');
+const markEls = [];  // [day][i]
+DAYS.forEach((d, di) => {
+  markEls[di] = [];
+  const list = ops(di);
+  list.forEach((o, i) => {
+    // nudge openings that share the same half hour so both stay visible
+    const same = list.filter(p => p[0] === o[0]);
+    const span = Math.min(34, d.r * 0.2);
+    const k = same.indexOf(o), shift = (k - (same.length - 1) / 2) * ((span + 3) / d.r * 180 / Math.PI);
+    const deg = o[0] * 15 + shift;
+    const m = el('path', { d: arc(d.r, deg, span), stroke: CATS[o[1]].color, 'stroke-width': RW, fill: 'none', class: 'mark' }, marksG);
+    m.dataset.day = di; m.dataset.cat = o[1]; m.dataset.t = o[0];
+    m.style.opacity = 0;
+    markEls[di].push(m);
+  });
+});
+
+// animate the fill-in, day by day in time order
+(function fillIn() {
+  let n = 0, shown = 0; const num = $('centerNum');
+  markEls.forEach(day => day.forEach(m => {
+    const delay = 250 + n++ * 45;
+    setTimeout(() => { m.style.opacity = ''; m.classList.add('pop'); m.addEventListener('animationend', () => m.classList.remove('pop'), { once: true }); num.textContent = ++shown; }, delay);
+  }));
+})();
+
+/* ---------- tooltip ---------- */
+const tip = $('tip');
+marksG.addEventListener('mousemove', e => {
+  const m = e.target.closest('.mark'); if (!m) return;
+  const stage = $('stage').getBoundingClientRect(), s = stage.width / 1728;
+  tip.textContent = `${DAYS[m.dataset.day].name} · ${fmt(+m.dataset.t)} · ${CATS[m.dataset.cat].label}`;
+  tip.style.left = ((e.clientX - stage.left) / s + 14) + 'px';
+  tip.style.top = ((e.clientY - stage.top) / s - 36) + 'px';
+  tip.style.opacity = 1;
+});
+marksG.addEventListener('mouseleave', () => tip.style.opacity = 0);
+marksG.addEventListener('click', e => { const m = e.target.closest('.mark'); if (m) openDay(+m.dataset.day); });
+
+/* ---------- legend (hover to isolate a reason) ---------- */
+const legend = $('legend');
+Object.entries(CATS).forEach(([key, c]) => {
+  const dot = document.createElement('span'); dot.className = 'legend-dot'; dot.style.left = c.x + 'px'; dot.style.background = c.color;
+  const lab = document.createElement('span'); lab.className = 'legend-item'; lab.style.left = c.tx + 'px'; lab.textContent = c.label;
+  [dot, lab].forEach(n => {
+    n.addEventListener('mouseenter', () => document.querySelectorAll('.mark').forEach(m => m.classList.toggle('dim', m.dataset.cat !== key)));
+    n.addEventListener('mouseleave', () => document.querySelectorAll('.mark').forEach(m => m.classList.remove('dim')));
+  });
+  legend.append(dot, lab);
+});
+
+/* ---------- pills ---------- */
+function makePill(di, top, right) {
+  const d = DAYS[di], b = document.createElement('button');
+  b.type = 'button'; b.className = 'pill' + (ops(di).length ? '' : ' nodata');
+  b.style.cssText = `left:${right - d.w}px;top:${top}px;width:${d.w}px;background:${d.color}`;
+  b.innerHTML = `<span class="t" style="left:${d.tx}px">${d.pill}</span>`;
+  b.setAttribute('aria-label', `${d.name}: ${ops(di).length} openings`);
+  return b;
+}
+const weekView = $('weekView');
+DAYS.forEach((d, di) => {
+  const b = makePill(di, d.top, PILL_RIGHT);
+  b.addEventListener('click', () => openDay(di));
+  b.addEventListener('mouseenter', () => { ringEls[di].setAttribute('stroke', d.color); ringEls[di].setAttribute('stroke-opacity', .35); });
+  b.addEventListener('mouseleave', () => { ringEls[di].setAttribute('stroke', '#e2e2e2'); ringEls[di].removeAttribute('stroke-opacity'); });
+  weekView.appendChild(b);
+});
+
+/* ---------- day view ---------- */
+let current = -1;
+function openDay(di) {
+  stop();
+  current = di;
+  const d = DAYS[di], list = ops(di);
+  $('weekView').classList.add('hidden'); $('dayView').classList.remove('hidden');
+  grainG.classList.remove('hidden');
+  ringEls.forEach((r, i) => r.setAttribute('filter', i === di ? '' : 'url(#grain)'));
+  ringEls.forEach((r, i) => r.setAttribute('stroke', i === di ? '#e2e2e2' : '#bcbcbc'));
+  markEls.forEach((day, i) => day.forEach(m => m.classList.toggle('muted', i !== di)));
+  haloEl.setAttribute('r', d.r); haloEl.setAttribute('opacity', 1);
+  $('centerNum').textContent = list.length;
+
+  const slot = $('dayPillSlot'); slot.innerHTML = '';
+  const p = makePill(di, 168, 1629); p.tabIndex = -1; p.style.pointerEvents = 'none'; slot.appendChild(p);
+  $('dayTitle').textContent = `${d.name}’s music`;
+  $('daySub').textContent = list.length ? `first opened at ${fmt(list[0][0])}, last opened ${fmt(list[list.length - 1][0])}` : 'no openings recorded for this day yet';
+  $('playIcon').querySelector('path').setAttribute('fill', d.color === '#d9d9d9' ? '#8e8e93' : d.color);
+  $('play').disabled = !list.length;
+
+  const track = $('track'); track.querySelectorAll('.tdot').forEach(n => n.remove());
+  list.forEach((o, i) => {
+    const s = document.createElement('span'); s.className = 'tdot';
+    s.style.left = (o[0] / 24 * 100) + '%'; s.style.background = CATS[o[1]].color; s.dataset.i = i;
+    track.appendChild(s);
+  });
+  $('now').innerHTML = list.length ? `${list.length} openings · press play` : '';
+}
+function showWeek() {
+  stop(); current = -1;
+  $('dayView').classList.add('hidden'); $('weekView').classList.remove('hidden');
+  grainG.classList.add('hidden');
+  ringEls.forEach(r => { r.removeAttribute('filter'); r.setAttribute('stroke', '#e2e2e2'); });
+  document.querySelectorAll('.mark.muted').forEach(m => m.classList.remove('muted'));
+  haloEl.setAttribute('opacity', 0);
+  $('centerNum').textContent = total;
+}
+$('backBtn').onclick = () => openDay((current + 6) % 7);
+$('nextBtn').onclick = () => openDay((current + 1) % 7);
+$('weekBtn').onclick = showWeek;
+addEventListener('keydown', e => {
+  if (current < 0) return;
+  if (e.key === 'ArrowLeft') $('backBtn').click();
+  if (e.key === 'ArrowRight') $('nextBtn').click();
+  if (e.key === 'Escape') showWeek();
+});
+
+/* ---------- the fridge's own music (no piano) ----------
+   pop   = the door seal, once per opening
+   clink = a bottle in the door; pitch = why you opened it      */
+let ctx, playing = false, raf, hum, startT;
+const DUR = 16; // seconds for 24 hours
+function audio() { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); return ctx; }
+function startHum() {
+  const c = audio(), g = c.createGain(), lp = c.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 160;
+  g.gain.setValueAtTime(0, c.currentTime); g.gain.linearRampToValueAtTime(.05, c.currentTime + .8);
+  const o1 = c.createOscillator(), o2 = c.createOscillator();
+  o1.type = 'sawtooth'; o1.frequency.value = 50; o2.type = 'sawtooth'; o2.frequency.value = 100.6;
+  o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(c.destination); o1.start(); o2.start();
+  hum = { g, o: [o1, o2] };
+}
+function stopHum() {
+  if (!hum) return; const c = ctx, h = hum; hum = null;
+  h.g.gain.cancelScheduledValues(c.currentTime); h.g.gain.setTargetAtTime(0, c.currentTime, .15);
+  setTimeout(() => h.o.forEach(o => o.stop()), 800);
+}
+function opening(at, freq) {
+  const c = ctx;
+  // door seal pop: short filtered noise
+  const len = .09, buf = c.createBuffer(1, c.sampleRate * len, c.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / ch.length, 3);
+  const n = c.createBufferSource(), bp = c.createBiquadFilter(), ng = c.createGain();
+  n.buffer = buf; bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = .8; ng.gain.value = .5;
+  n.connect(bp); bp.connect(ng); ng.connect(c.destination); n.start(at);
+  // bottle clink: sine + inharmonic partial, fast decay
+  [[1, .22], [2.76, .07], [5.4, .03]].forEach(([mult, amp]) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'sine'; o.frequency.value = freq * mult;
+    g.gain.setValueAtTime(0, at + .03); g.gain.linearRampToValueAtTime(amp, at + .035); g.gain.exponentialRampToValueAtTime(.0001, at + .9 / mult + .2);
+    o.connect(g); g.connect(c.destination); o.start(at + .03); o.stop(at + 1.3);
+  });
+}
+function play() {
+  const list = ops(current); if (!list.length) return;
+  const c = audio(); playing = true;
+  startT = c.currentTime + .3;
+  list.forEach(o => opening(startT + o[0] / 24 * DUR, CATS[o[1]].pitch));
+  $('playIcon').innerHTML = `<rect x="4" y="2" width="8" height="26" fill="${$('playIcon').querySelector('path,rect').getAttribute('fill')}"/><rect x="18" y="2" width="8" height="26" fill="${$('playIcon').querySelector('path,rect').getAttribute('fill')}"/>`;
+  $('play').setAttribute('aria-label', 'Stop');
+  $('head').style.opacity = 1;
+  const marks = markEls[current], dots = [...$('track').querySelectorAll('.tdot')];
+  const tick = () => {
+    const h = Math.max(0, (ctx.currentTime - startT) / DUR * 24);
+    $('head').style.left = Math.min(100, h / 24 * 100) + '%';
+    let last = -1;
+    list.forEach((o, i) => {
+      const on = h >= o[0] && h < o[0] + .9;
+      marks[i].classList.toggle('on', on); dots[i].classList.toggle('on', on);
+      if (h >= o[0]) last = i;
+    });
+    $('now').innerHTML = last >= 0 ? `<b>${fmt(list[last][0])}</b> · ${CATS[list[last][1]].label}` : 'listening…';
+    if (h >= 24.6) return stop();
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+function stop() {
+  if (!playing) return; playing = false; cancelAnimationFrame(raf); stopHum();
+  if (ctx) { ctx.close(); ctx = null; }
+  const fill = $('playIcon').querySelector('path,rect').getAttribute('fill');
+  $('playIcon').innerHTML = `<path d="M2 0 L30 15 L2 30 Z" fill="${fill}"/>`;
+  $('play').setAttribute('aria-label', "Play this day's music");
+  $('head').style.opacity = 0;
+  document.querySelectorAll('.mark.on,.tdot.on').forEach(n => n.classList.remove('on'));
+}
+$('play').onclick = () => playing ? stop() : play();
+</script>
+</body>
+</html>
